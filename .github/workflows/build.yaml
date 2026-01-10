@@ -1,0 +1,126 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  KERNEL_VERSION: "6.1"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set version
+      id: version
+      run: |
+        VERSION="$(date +%Y%m%d)-${GITHUB_SHA::7}"
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Version: ${VERSION}"
+
+    - name: Prepare proprietary files
+      run: ./dev.sh prepare proprietary
+
+    - name: Upload proprietary files
+      uses: actions/upload-artifact@v4
+      with:
+        name: proprietary-files
+        path: tmp/proprietary/
+        retention-days: 1
+        if-no-files-found: error
+
+  build-kernel:
+    runs-on: ubuntu-24.04-arm
+    needs: prepare
+    strategy:
+      matrix:
+        kernel_profile: ["basic", "basic-devel", "extended", "extended-devel"]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set version
+      id: version
+      run: |
+        VERSION="$(date +%Y%m%d)-${GITHUB_SHA::7}"
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Version: ${VERSION}"
+
+    - name: Download proprietary files
+      uses: actions/download-artifact@v4
+      with:
+        name: proprietary-files
+        path: tmp/proprietary/
+
+    - name: Prepare kernel source
+      run: ./dev.sh prepare kernel ${{ env.KERNEL_VERSION }}
+
+    - name: Build kernel
+      run: |
+        ./dev.sh ./scripts/build-kernel.sh \
+          ${{ env.KERNEL_VERSION }} \
+          ${{ matrix.kernel_profile }} \
+          output/kernel-${{ matrix.kernel_profile }}-${{ env.KERNEL_VERSION }}-${{ needs.prepare.outputs.version }}.img
+
+    - name: Upload kernel artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-${{ matrix.kernel_profile }}-${{ env.KERNEL_VERSION }}-${{ needs.prepare.outputs.version }}
+        path: |
+          output/kernel-*.img
+          output/kernel-*-vmlinuz
+          output/kernel-*.dtb
+          output/kernel-*.config
+          output/kernel-*-modules.tar.gz
+
+  release:
+    runs-on: ubuntu-24.04-arm
+    needs: [prepare, build-kernel]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download all kernel artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: kernel-*-${{ env.KERNEL_VERSION }}-${{ needs.prepare.outputs.version }}
+        path: output/
+        merge-multiple: true
+
+    - name: Release
+      uses: ncipollo/release-action@v1
+      with:
+        tag: ${{ needs.prepare.outputs.version }}
+        allowUpdates: false
+        prerelease: false
+        body: |
+          Custom kernel builds for Snapmaker U1
+
+          **Version:** ${{ needs.prepare.outputs.version }}
+          **Built:** ${{ github.event.head_commit.timestamp }}
+          **Commit:** ${{ github.sha }}
+
+          ## Kernel Profiles
+
+          - **basic** - Minimal hardware boot
+          - **basic-devel** - Basic + debugging
+          - **extended** - Basic + Docker/QEMU support
+          - **extended-devel** - Extended + debugging
+        artifacts: "output/kernel-*"

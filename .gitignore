@@ -1,0 +1,19 @@
+# Build output
+output/
+
+# Temporary build files
+tmp/
+
+# Kernel source (cloned fresh)
+rockchip-kernel/
+
+# Compiled tools
+tools/upfile/upfile
+tools/rk2918_tools/afptool
+tools/rk2918_tools/img_maker
+tools/rk2918_tools/img_unpack
+tools/rk2918_tools/mkkrnlimg
+tools/rk2918_tools/*.o
+
+# Docker volumes
+.ccache/
