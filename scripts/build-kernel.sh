@@ -80,16 +80,6 @@ mkdir -p "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/modules"
 mkdir -p "$BOOT_BUILD_DIR"
 
-# Patch kernel version
-echo ">> Patching kernel Makefile version..."
-VERSION_PATCH="$KERNEL_CONFIG_DIR/kernel-makefile-${KERNEL_VERSION}.118.patch"
-if [[ -f "$VERSION_PATCH" ]]; then
-  head -6 "$VERSION_PATCH" > "$KERNEL_DIR/Makefile.tmp"
-  tail -n +7 "$KERNEL_DIR/Makefile" >> "$KERNEL_DIR/Makefile.tmp"
-  mv "$KERNEL_DIR/Makefile.tmp" "$KERNEL_DIR/Makefile"
-  echo ">> Applied version patch for ${KERNEL_VERSION}.118"
-fi
-
 # Copy DTS
 echo ">> Copying device tree: $DTS_NAME"
 cp "$STOCK_DTS" "$KERNEL_DIR/arch/arm64/boot/dts/rockchip/$DTS_NAME"
