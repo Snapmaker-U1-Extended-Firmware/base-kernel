@@ -44,7 +44,7 @@ jobs:
     needs: prepare
     strategy:
       matrix:
-        kernel_profile: ["basic", "basic-devel", "extended", "extended-devel"]
+        kernel_profile: ["open", "open-devel"]
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -68,11 +68,12 @@ jobs:
       run: ./dev.sh prepare kernel ${{ env.KERNEL_VERSION }}
 
     - name: Build kernel
+      env:
+        GIT_VERSION: ${{ needs.prepare.outputs.version }}
       run: |
-        ./dev.sh ./scripts/build-kernel.sh \
-          ${{ env.KERNEL_VERSION }} \
-          ${{ matrix.kernel_profile }} \
-          output/kernel-${{ matrix.kernel_profile }}-${{ env.KERNEL_VERSION }}-${{ needs.prepare.outputs.version }}.img
+        ./dev.sh make kernel \
+          KVER=${{ env.KERNEL_VERSION }} \
+          PROFILE=${{ matrix.kernel_profile }}
 
     - name: Upload kernel artifacts
       uses: actions/upload-artifact@v4
@@ -119,8 +120,6 @@ jobs:
 
           ## Kernel Profiles
 
-          - **basic** - Minimal hardware boot
-          - **basic-devel** - Basic + debugging
-          - **extended** - Basic + Docker/QEMU support
-          - **extended-devel** - Extended + debugging
+          - **open** - Normal version
+          - **open-devel** - Development version with extra debugging features and disabled Rockchip DRM for QEMU compatibility
         artifacts: "output/kernel-*"

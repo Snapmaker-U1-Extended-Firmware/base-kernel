@@ -46,12 +46,8 @@ else
     echo ">> Using cached firmware: $FIRMWARE_PATH"
 fi
 
-# Build extraction tools if needed
-if [[ ! -f "$ROOT_DIR/tools/upfile/upfile" ]] || [[ ! -f "$ROOT_DIR/tools/rk2918_tools/afptool" ]]; then
-    echo ">> Building extraction tools..."
-    make -C "$ROOT_DIR/tools/upfile" -j"$(nproc)"
-    make -C "$ROOT_DIR/tools/rk2918_tools" -j"$(nproc)"
-fi
+# Ensure extraction tools are built
+"$SCRIPT_DIR/prepare-tools.sh"
 
 # Unpack firmware to get boot.img
 echo ">> Unpacking firmware to extract boot.img..."

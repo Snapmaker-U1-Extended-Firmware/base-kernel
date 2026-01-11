@@ -6,11 +6,11 @@ if [[ $# -ne 3 ]]; then
   echo ""
   echo "Arguments:"
   echo "  kernel-version   Kernel version (6.1 or 6.6)"
-  echo "  build-profile    Build profile (basic, basic-devel, extended, extended-devel)"
-  echo "  output.img       Output boot image path"
+  echo "  build-profile    Build profile (open, open-devel)"
+  echo "  output.img       Output FIT image path"
   echo ""
   echo "Example:"
-  echo "  $0 6.1 extended-devel output/kernel-extended-devel-6.1.img"
+  echo "  $0 6.1 open-devel output/kernel-open-devel-6.1-20260110-abc123-u1-boot.img"
   exit 1
 fi
 
@@ -173,10 +173,16 @@ mkimage -E -p 0x800 -B 0x100 -f "$BOOT_BUILD_DIR/boot.its" "$OUTPUT_IMG"
 
 # Export kernel Image and config alongside boot image
 OUTPUT_DIR="$(dirname "$OUTPUT_IMG")"
-OUTPUT_BASE="$(basename "$OUTPUT_IMG" .img)"
+# .img gets full name with -u1-boot suffix
+OUTPUT_BASE_IMG="$(basename "$OUTPUT_IMG" .img)"
+# Other artifacts: strip -u1-boot suffix for cleaner names
+OUTPUT_BASE="${OUTPUT_BASE_IMG%-u1-boot}"
+# .dtb gets -u1 suffix only
+OUTPUT_BASE_DTB="${OUTPUT_BASE}-u1"
+
 cp "$BUILD_DIR/arch/arm64/boot/Image" "$OUTPUT_DIR/${OUTPUT_BASE}-vmlinuz"
 cp "$BUILD_DIR/.config" "$OUTPUT_DIR/${OUTPUT_BASE}.config"
-cp "$BUILD_DIR/arch/arm64/boot/dts/rockchip/$DTB_NAME" "$OUTPUT_DIR/${OUTPUT_BASE}.dtb"
+cp "$BUILD_DIR/arch/arm64/boot/dts/rockchip/$DTB_NAME" "$OUTPUT_DIR/${OUTPUT_BASE_DTB}.dtb"
 
 # Export modules as compressed tarball
 echo ">> Packaging modules..."
@@ -195,12 +201,12 @@ cp -r "$MODULES_STAGING/lib" "$ARTIFACTS_STAGING/"
 BOOT_SIZE=$(du -h "$OUTPUT_IMG" | cut -f1)
 VMLINUZ_SIZE=$(du -h "$OUTPUT_DIR/${OUTPUT_BASE}-vmlinuz" | cut -f1)
 CONFIG_SIZE=$(du -h "$OUTPUT_DIR/${OUTPUT_BASE}.config" | cut -f1)
-DTB_SIZE=$(du -h "$OUTPUT_DIR/${OUTPUT_BASE}.dtb" | cut -f1)
+DTB_SIZE=$(du -h "$OUTPUT_DIR/${OUTPUT_BASE_DTB}.dtb" | cut -f1)
 echo ""
 echo "==========================================================="
 echo "Build complete! Artifacts:"
 echo "  Boot Image:    $OUTPUT_IMG ($BOOT_SIZE)"
 echo "  Kernel Image:  $OUTPUT_DIR/${OUTPUT_BASE}-vmlinuz ($VMLINUZ_SIZE)"
-echo "  Device Tree:   $OUTPUT_DIR/${OUTPUT_BASE}.dtb ($DTB_SIZE)"
+echo "  Device Tree:   $OUTPUT_DIR/${OUTPUT_BASE_DTB}.dtb ($DTB_SIZE)"
 echo "  Config File:   $OUTPUT_DIR/${OUTPUT_BASE}.config ($CONFIG_SIZE)"
 echo "==========================================================="

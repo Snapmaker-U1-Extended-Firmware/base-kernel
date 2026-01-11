@@ -8,7 +8,7 @@ This project builds custom Linux kernels compatible with the Snapmaker U1 3D pri
 
 **Features:**
 
-- Multiple build profiles (basic, extended, with/without debugging)
+- Multiple build profiles (open, open-devel)
 - Docker/container support (cgroups, namespaces, overlay fs)
 - QEMU/KVM virtualization support
 - Automated FIT image creation for U-Boot
@@ -27,6 +27,7 @@ This project builds custom Linux kernels compatible with the Snapmaker U1 3D pri
 ```shell
 ./dev.sh prepare proprietary
 ./dev.sh prepare kernel 6.1
+./dev.sh prepare rootfs       # Optional: for QEMU testing
 ```
 
 This downloads the stock U1 firmware (~200MB) and extracts:
@@ -39,45 +40,34 @@ And clones the Rockchip kernel source to `rockchip-kernel/`.
 ### Build Kernel
 
 ```shell
-./dev.sh make kernel PROFILE=extended-devel KVER=6.1
+./dev.sh make kernel PROFILE=open-devel KVER=6.1
 ```
 
 ### Test in QEMU
 
 ```shell
-./dev.sh launch output/kernel-extended-devel-6.1-20260110-302aee0.img
+./dev.sh launch output/kernel-open-devel-6.1-20260110-302aee0-u1-boot.img
 ```
 
 Press `Ctrl-A X` to exit QEMU.
 
 ## Build Profiles
 
-Four profiles are available, each building on the previous:
+Two profiles are available:
 
-### basic
+### open
 
-- Minimal kernel for hardware boot
 - Stock Snapmaker U1 configuration
-- No additional features
-
-### basic-devel
-
-- `basic` + debugging support
-- CONFIG_DEBUG_INFO=y
-- CONFIG_DEBUG_KERNEL=y
-- CONFIG_DEBUG_FS=y
-
-### extended
-
-- `basic` + container/virtualization support
 - Docker/Podman support (namespaces, cgroups, veth, bridge, overlay fs)
 - QEMU support (virtio drivers, PL011 serial, PL031 RTC)
 - MACVLAN networking
 
-### extended-devel
+### open-devel
 
-- `extended` + debugging support
-- Full debugging + containers + virtualization
+- `open` + debugging and development tools
+- CONFIG_DEBUG_INFO=y
+- CONFIG_DEBUG_KERNEL=y
+- CONFIG_DEBUG_FS=y
 
 ## Kernel Versions
 
@@ -90,18 +80,9 @@ Four profiles are available, each building on the previous:
 
 ```shell
 ./dev.sh make help                    # Show all targets
-./dev.sh make kernel PROFILE=extended KVER=6.1
-./dev.sh make qemu PROFILE=extended   # Build and launch QEMU
+./dev.sh make kernel PROFILE=open KVER=6.1
+./dev.sh make qemu PROFILE=open   # Build and launch QEMU
 ./dev.sh make clean                   # Remove build artifacts
-```
-
-### Direct Script Usage
-
-Advanced users can call scripts directly:
-
-```shell
-./dev.sh ./scripts/build-kernel.sh 6.1 extended-devel output/kernel.img
-./dev.sh ./scripts/launch-qemu.sh output/kernel.img
 ```
 
 ## Build Scripts
@@ -138,22 +119,55 @@ Main kernel build orchestrator.
 
 ### scripts/launch-qemu.sh
 
-Launches QEMU with the built kernel.
+**EXPERIMENTAL:** Launches QEMU for kernel testing (limited functionality).
+
+**Known Limitations:**
+
+- The kernel is built specifically for Rockchip RK3562 hardware with Cortex-A53 CPUs
+- Userspace binaries may crash due to CPU feature mismatches between real hardware and QEMU emulation
+- QEMU testing is primarily useful for validating kernel boot and driver loading
+- Full system testing requires actual Snapmaker U1 hardware
 
 **Usage:**
 
 ```shell
-./dev.sh ./scripts/launch-qemu.sh <boot.img> [qemu-args...]
+# Interactive mode (run directly in your terminal):
+./dev.sh launch output/kernel-open-devel-6.1-YYYYMMDD-hash-vmlinuz
+
+# Or for quick alias:
+./dev.sh launch output/kernel-open-devel-*-vmlinuz
 ```
 
 **Features:**
 
-- ARM64 Cortex-A72 emulation
+- ARM64 Cortex-A53 emulation (4 cores, matching RK3562)
+- QEMU virt machine
 - 2GB RAM
-- PL011 UART console
-- Serial output to stdio
+- PL011 UART console on ttyAMA0
+- Automatic rootfs detection (if prepared with `./dev.sh prepare rootfs`)
+- VirtIO block device for rootfs (/dev/vda)
 
-**Exit:** Press `Ctrl-A X`
+**Interactive Console Controls:**
+
+- **Ctrl-A X** - Exit QEMU
+- **Ctrl-A C** - Switch between serial console and QEMU monitor
+- **Ctrl-A H** - Help for QEMU monitor commands
+
+**Important:** This script must be run directly in your terminal for interactive console access.
+The serial console will not work if launched through background processes or automation tools.
+
+**Non-Interactive Mode:**
+
+For automated testing or CI/CD, you can redirect serial output to a pty:
+
+```shell
+./dev.sh launch output/kernel-*-vmlinuz -serial pty -nographic
+# QEMU will print: "char device redirected to /dev/pts/N (label serial0)"
+# Connect with: tio /dev/pts/N
+```
+
+**Note:** The FIT image (`*-u1-boot.img`) is designed for U-Boot bootloader on the actual
+hardware. For QEMU testing, always use the raw kernel image (`*-vmlinuz`).
 
 ### scripts/kernel-config.sh
 
@@ -182,7 +196,7 @@ CONFIG_ANOTHER=m
 Then add the profile to `scripts/kernel-config.sh`:
 
 ```shell
-KERNEL_PROFILES=(basic basic-devel extended extended-devel my-custom)
+KERNEL_PROFILES=(open open-devel my-custom)
 ```
 
 ### Modifying Device Tree
@@ -191,10 +205,10 @@ Edit [config/snapmaker-u1-stock.dts](config/snapmaker-u1-stock.dts). Changes wil
 
 ### Debugging Builds
 
-Use `-devel` profiles for debug symbols and additional diagnostics:
+Use the `-devel` profile for debug symbols and additional diagnostics:
 
 ```shell
-./dev.sh make kernel PROFILE=basic-devel KVER=6.1
+./dev.sh make kernel PROFILE=open-devel KVER=6.1
 ```
 
 Build artifacts remain in `tmp/kernel-*` on failure for inspection.
@@ -222,7 +236,7 @@ Check [tmp/kernel-$$](../tmp/) for build logs. The build directory persists on e
 
 ### QEMU doesn't boot
 
-Ensure you're using an `extended` or `extended-devel` profile (requires virtio drivers).
+Ensure you're using the `open` or `open-devel` profile (requires virtio drivers).
 
 ## References
 

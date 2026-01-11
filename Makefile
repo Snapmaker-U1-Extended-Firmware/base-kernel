@@ -4,22 +4,21 @@ include vars.mk
 
 # Accept KVER as user-facing parameter, map to KERNEL_VERSION internally
 KERNEL_VERSION := $(or $(KVER),6.1)
-BUILD_PROFILE := $(or $(PROFILE),extended)
+BUILD_PROFILE := $(or $(PROFILE),open)
 OUTPUT_DIR ?= output
 
-KERNEL_PROFILES := basic basic-devel extended extended-devel
+KERNEL_PROFILES := open open-devel
 
 # Force override VERSION to prevent command-line pollution of kernel build
 override VERSION :=
 
-# Generate version tag
-GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo 'local')
-BUILD_VERSION := $(shell date +%Y%m%d)-$(GIT_SHA)
+# Generate version tag (use GIT_VERSION from environment if provided, e.g., in CI)
+BUILD_VERSION := $(or $(GIT_VERSION),$(shell date +%Y%m%d)-$(shell git rev-parse --short HEAD 2>/dev/null || echo 'local'))
 
 # Output files
-KERNEL_IMG := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION).img
+KERNEL_IMG := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION)-u1-boot.img
 KERNEL_VMLINUZ := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION)-vmlinuz
-KERNEL_DTB := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION).dtb
+KERNEL_DTB := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION)-u1.dtb
 KERNEL_CONFIG := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION).config
 KERNEL_MODULES := $(OUTPUT_DIR)/kernel-$(BUILD_PROFILE)-$(KERNEL_VERSION)-$(BUILD_VERSION)-modules.tar.gz
 
@@ -34,10 +33,8 @@ help:
 	@echo "  make clean"
 	@echo ""
 	@echo "Kernel Profiles:"
-	@echo "  basic          - Minimal hardware boot"
-	@echo "  basic-devel    - Basic + debugging"
-	@echo "  extended       - Basic + Docker/QEMU support"
-	@echo "  extended-devel - Extended + debugging"
+	@echo "  open       - Docker/Container + QEMU/KVM support"
+	@echo "  open-devel - Open + debugging and development tools"
 	@echo ""
 	@echo "Variables:"
 	@echo "  PROFILE        - Build profile (default: $(BUILD_PROFILE))"
@@ -45,18 +42,22 @@ help:
 	@echo "  OUTPUT_DIR     - Output directory (default: $(OUTPUT_DIR))"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make kernel PROFILE=basic-devel"
-	@echo "  make kernel PROFILE=extended KVER=6.1"
+	@echo "  make kernel PROFILE=open-devel"
+	@echo "  make kernel PROFILE=open KVER=6.1"
 	@echo ""
 	@echo "Launch QEMU:"
-	@echo "  make qemu PROFILE=extended-devel [KVER=6.1]"
+	@echo "  make qemu PROFILE=open-devel [KVER=6.1]"
 
 # ================= Kernel Build =================
 
-.PHONY: kernel
-kernel: $(KERNEL_IMG)
+.PHONY: clone-kernel
+clone-kernel:
+	@./scripts/clone-rockchip-kernel.sh $(KERNEL_VERSION)
 
-$(KERNEL_IMG): scripts/clone-rockchip-kernel.sh scripts/build-kernel.sh
+# Kernel build should always run when requested
+# Dependencies are complex (kernel sources, configs, etc.) so we use .PHONY
+.PHONY: kernel
+kernel: clone-kernel
 	@echo "Building kernel $(KERNEL_VERSION) with profile $(BUILD_PROFILE)..."
 ifeq ($(filter $(BUILD_PROFILE),$(KERNEL_PROFILES)),)
 	@echo "Error: Invalid profile '$(BUILD_PROFILE)'"
@@ -64,14 +65,13 @@ ifeq ($(filter $(BUILD_PROFILE),$(KERNEL_PROFILES)),)
 	@exit 1
 endif
 	@mkdir -p $(OUTPUT_DIR)
-	@./scripts/clone-rockchip-kernel.sh $(KERNEL_VERSION)
 	@./scripts/build-kernel.sh $(KERNEL_VERSION) $(BUILD_PROFILE) $(KERNEL_IMG)
 
 # ================= QEMU Launch =================
 
 .PHONY: qemu
-qemu: $(KERNEL_IMG)
-	@./scripts/launch-qemu.sh $(KERNEL_IMG)
+qemu: kernel
+	@./scripts/launch-qemu.sh $(KERNEL_VMLINUZ)
 
 # ================= Clean =================
 

@@ -14,16 +14,24 @@ Usage:
   ./dev.sh prepare <command>
 
 Commands:
+  tools         Build firmware extraction tools
   proprietary   Download stock firmware and extract proprietary files
   kernel        Clone Rockchip kernel source
+  rootfs        Download and prepare Debian rootfs for QEMU [version]
   help          Show this help
 
 Examples:
+  ./dev.sh prepare tools
   ./dev.sh prepare proprietary
   ./dev.sh prepare kernel
+  ./dev.sh prepare rootfs          # Download latest release
+  ./dev.sh prepare rootfs v1.0.0   # Download specific release
 
 EOF
             exit 0
+            ;;
+        tools)
+            exec ./scripts/prepare-tools.sh
             ;;
         proprietary)
             exec ./scripts/prepare-proprietary.sh
@@ -31,6 +39,10 @@ EOF
         kernel)
             shift
             exec ./scripts/prepare-kernel.sh "$@"
+            ;;
+        rootfs)
+            shift
+            exec ./scripts/prepare-rootfs.sh "$@"
             ;;
         *)
             echo "Unknown prepare command: $1"
@@ -57,9 +69,9 @@ Commands:
 
 Examples:
   ./dev.sh make help                           Show all make targets
-  ./dev.sh make kernel PROFILE=extended-devel
-  ./dev.sh make kernel PROFILE=basic KVER=6.1
-  ./dev.sh launch output/kernel-extended-devel-6.1-20260110-abc123.img
+  ./dev.sh make kernel PROFILE=open-devel
+  ./dev.sh make kernel PROFILE=open KVER=6.1
+  ./dev.sh launch output/kernel-open-devel-6.1-20260110-abc123-u1-boot.img
 
 For detailed build options:
   ./dev.sh make help
@@ -84,8 +96,8 @@ Arguments:
   qemu-args     Additional QEMU arguments (optional)
 
 Examples:
-  ./dev.sh launch output/kernel-extended-devel-6.1-20260110-abc123.img
-  ./dev.sh launch output/kernel-basic-6.1-20260110-abc123.img -nographic
+  ./dev.sh launch output/kernel-open-devel-6.1-20260110-abc123-u1-boot.img
+  ./dev.sh launch output/kernel-open-6.1-20260110-abc123-u1-boot.img -nographic
 
 The launcher configures QEMU with:
   - ARM64 virt machine with Cortex-A72

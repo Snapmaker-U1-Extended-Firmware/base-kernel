@@ -13,14 +13,8 @@ echo "========================================="
 echo "Preparing Rockchip kernel $KERNEL_VERSION"
 echo "========================================="
 
-# Check if already cloned
-if [[ -d "$KERNEL_DIR/.git" ]]; then
-    echo ">> Kernel source already present at $KERNEL_DIR"
-    exit 0
-fi
-
-# Clone using the existing script
-"$SCRIPT_DIR/clone-rockchip-kernel.sh" "$KERNEL_VERSION"
+# Clone or update kernel source via Makefile
+make -C "$ROOT_DIR" clone-kernel KVER="$KERNEL_VERSION"
 
 echo ""
 echo "========================================="

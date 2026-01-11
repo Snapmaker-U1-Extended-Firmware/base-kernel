@@ -9,7 +9,7 @@ ARCH="arm64"
 CROSS_COMPILE="aarch64-linux-gnu-"
 
 # Profile definitions
-KERNEL_PROFILES=(basic basic-devel extended extended-devel)
+KERNEL_PROFILES=(open open-devel)
 
 # Get profile config file path
 get_profile_config() {
