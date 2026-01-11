@@ -16,14 +16,14 @@ Usage:
 Commands:
   tools         Build firmware extraction tools
   proprietary   Download stock firmware and extract proprietary files
-  kernel        Clone Rockchip kernel source
+  kernel        Clone Rockchip kernel source [version]
   rootfs        Download and prepare Debian rootfs for QEMU [version]
   help          Show this help
 
 Examples:
   ./dev.sh prepare tools
   ./dev.sh prepare proprietary
-  ./dev.sh prepare kernel
+  ./dev.sh prepare kernel 6.1      # Clone kernel version 6.1
   ./dev.sh prepare rootfs          # Download latest release
   ./dev.sh prepare rootfs v1.0.0   # Download specific release
 
@@ -58,23 +58,34 @@ if [[ "$1" == "help" || "$1" == "--help" || "$1" == "-h" || -z "$1" ]]; then
 Snapmaker U1 Custom Kernel Builder - Development Environment
 
 Usage:
+  ./dev.sh prepare <command> [args]           Prepare build dependencies
   ./dev.sh make <target> [PROFILE=<profile>] [KVER=<version>]
-  ./dev.sh launch <args>
-  ./dev.sh <command>
+  ./dev.sh launch <kernel-image> [qemu-args]  Launch QEMU
 
 Commands:
+  prepare       Prepare dependencies (tools, proprietary, kernel, rootfs)
   make          Run Makefile targets (kernel, qemu, clean)
   launch        Launch QEMU with built kernel
   help          Show this help message
 
 Examples:
-  ./dev.sh make help                           Show all make targets
-  ./dev.sh make kernel PROFILE=open-devel
-  ./dev.sh make kernel PROFILE=open KVER=6.1
-  ./dev.sh launch output/kernel-open-devel-6.1-20260110-abc123-u1-boot.img
+  # Prepare dependencies
+  ./dev.sh prepare proprietary
+  ./dev.sh prepare kernel 6.1
+  ./dev.sh prepare rootfs
 
-For detailed build options:
+  # Build kernel
+  ./dev.sh make kernel PROFILE=open-devel KVER=6.1
+  ./dev.sh make kernel PROFILE=open KVER=6.1
   ./dev.sh make help
+
+  # Test in QEMU (use -devel profile for QEMU compatibility)
+  ./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
+
+For detailed options:
+  ./dev.sh prepare help
+  ./dev.sh make help
+  ./dev.sh launch help
 
 EOF
     exit 0
@@ -89,21 +100,24 @@ if [[ "$1" == "launch" ]]; then
 Launch QEMU with built kernel
 
 Usage:
-  ./dev.sh launch <boot.img> [qemu-args...]
+  ./dev.sh launch <vmlinuz> [qemu-args...]
 
 Arguments:
-  boot.img      Path to boot FIT image
+  vmlinuz       Path to kernel image (use *-vmlinuz, not *-u1-boot.img)
   qemu-args     Additional QEMU arguments (optional)
 
 Examples:
-  ./dev.sh launch output/kernel-open-devel-6.1-20260110-abc123-u1-boot.img
-  ./dev.sh launch output/kernel-open-6.1-20260110-abc123-u1-boot.img -nographic
+  ./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
+  ./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz -nographic
 
 The launcher configures QEMU with:
   - ARM64 virt machine with Cortex-A72
   - 2GB RAM
   - Serial console on ttyAMA0
   - Verbose kernel boot output
+
+Note: Use the 'open-devel' profile for QEMU compatibility (includes VirtIO
+      drivers and disables Rockchip DRM/security features requiring TrustZone)
 
 Press Ctrl-A X to exit QEMU
 

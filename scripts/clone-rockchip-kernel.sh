@@ -22,6 +22,9 @@ source "$SCRIPT_DIR/kernel-config.sh"
 
 BRANCH=$(get_kernel_branch "$KERNEL_VERSION")
 
+# Configure git to trust the kernel directory (fixes CI ownership issues)
+git config --global --add safe.directory "$KERNEL_DIR" 2>/dev/null || true
+
 if [[ -d "$KERNEL_DIR/.git" ]]; then
   echo ">> Kernel source already cloned at $KERNEL_DIR"
   cd "$KERNEL_DIR"

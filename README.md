@@ -31,6 +31,7 @@ This project builds custom Linux kernels compatible with the Snapmaker U1 3D pri
 ```
 
 This downloads the stock U1 firmware (~200MB) and extracts:
+
 - `tmp/proprietary/resource.img` - Boot resources (logo, etc.)
 
 And clones the Rockchip kernel source to `rockchip-kernel/`.
@@ -40,13 +41,18 @@ And clones the Rockchip kernel source to `rockchip-kernel/`.
 ### Build Kernel
 
 ```shell
+# Build production kernel
+./dev.sh make kernel PROFILE=open KVER=6.1
+
+# Build development kernel (for QEMU testing)
 ./dev.sh make kernel PROFILE=open-devel KVER=6.1
 ```
 
 ### Test in QEMU
 
 ```shell
-./dev.sh launch output/kernel-open-devel-6.1-20260110-302aee0-u1-boot.img
+# Note: Use -devel profile for QEMU compatibility
+./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
 ```
 
 Press `Ctrl-A X` to exit QEMU.
@@ -61,13 +67,23 @@ Two profiles are available:
 - Docker/Podman support (namespaces, cgroups, veth, bridge, overlay fs)
 - QEMU support (virtio drivers, PL011 serial, PL031 RTC)
 - MACVLAN networking
+- **Best for:** Production deployment on physical hardware
 
 ### open-devel
 
-- `open` + debugging and development tools
-- CONFIG_DEBUG_INFO=y
-- CONFIG_DEBUG_KERNEL=y
-- CONFIG_DEBUG_FS=y
+- All features from `open` profile
+- **QEMU compatibility:** Disables Rockchip DRM/security features that require TrustZone firmware
+  - `CONFIG_DRM_ROCKCHIP=n` - Rockchip display driver (needs ARM TrustZone)
+  - `CONFIG_MFD_RK628=n` - HDMI/display management (needs TrustZone)
+  - Enables `CONFIG_DRM_VIRTIO_GPU` for QEMU display
+- Debugging and development tools:
+  - `CONFIG_DEBUG_INFO=y` - Debug symbols
+  - `CONFIG_DEBUG_KERNEL=y` - Kernel debugging
+  - `CONFIG_DEBUG_FS=y` - Debug filesystem
+- **Best for:** Development, testing in QEMU, debugging
+
+**Important:** Always use `open-devel` profile when testing with QEMU. The `open` profile's
+Rockchip-specific drivers will fail in QEMU as they require TrustZone secure firmware.
 
 ## Kernel Versions
 
@@ -79,10 +95,11 @@ Two profiles are available:
 ### Make Targets
 
 ```shell
-./dev.sh make help                    # Show all targets
-./dev.sh make kernel PROFILE=open KVER=6.1
-./dev.sh make qemu PROFILE=open   # Build and launch QEMU
-./dev.sh make clean                   # Remove build artifacts
+./dev.sh make help                              # Show all targets
+./dev.sh make kernel PROFILE=open KVER=6.1      # Production build
+./dev.sh make kernel PROFILE=open-devel KVER=6.1 # Development build
+./dev.sh make qemu PROFILE=open-devel KVER=6.1   # Build and launch QEMU
+./dev.sh make clean                             # Remove build artifacts
 ```
 
 ## Build Scripts
@@ -94,7 +111,7 @@ Clones the Rockchip kernel source. Run this once before building.
 **Usage:**
 
 ```shell
-./dev.sh ./scripts/clone-rockchip-kernel.sh <kernel-version>
+./dev.sh prepare kernel 6.1
 ```
 
 ### scripts/build-kernel.sh
@@ -119,7 +136,12 @@ Main kernel build orchestrator.
 
 ### scripts/launch-qemu.sh
 
-**EXPERIMENTAL:** Launches QEMU for kernel testing (limited functionality).
+**EXPERIMENTAL:** Launches QEMU for kernel testing with the `open-devel` profile.
+
+**Profile Requirements:**
+
+- **MUST use `open-devel` profile** - The standard `open` profile includes Rockchip-specific drivers (DRM, MFD_RK628) that require ARM TrustZone secure firmware not available in QEMU
+- The `open-devel` profile disables these hardware-specific drivers and enables VirtIO alternatives
 
 **Known Limitations:**
 
@@ -131,10 +153,13 @@ Main kernel build orchestrator.
 **Usage:**
 
 ```shell
-# Interactive mode (run directly in your terminal):
-./dev.sh launch output/kernel-open-devel-6.1-YYYYMMDD-hash-vmlinuz
+# Build with open-devel profile first
+./dev.sh make kernel PROFILE=open-devel KVER=6.1
 
-# Or for quick alias:
+# Launch QEMU with the vmlinuz image
+./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
+
+# Or use wildcard for convenience
 ./dev.sh launch output/kernel-open-devel-*-vmlinuz
 ```
 
@@ -205,7 +230,7 @@ Edit [config/snapmaker-u1-stock.dts](config/snapmaker-u1-stock.dts). Changes wil
 
 ### Debugging Builds
 
-Use the `-devel` profile for debug symbols and additional diagnostics:
+Use the `open-devel` profile for debug symbols, additional diagnostics, and QEMU compatibility:
 
 ```shell
 ./dev.sh make kernel PROFILE=open-devel KVER=6.1
@@ -225,10 +250,14 @@ See [.github/workflows/build.yaml](.github/workflows/build.yaml) for the full wo
 
 ```text
 Error: Kernel source not found at rockchip-kernel
-Run: ./dev.sh ./scripts/clone-rockchip-kernel.sh 6.1
+Run: ./dev.sh prepare kernel 6.1
 ```
 
-**Solution:** Clone the kernel source first.
+**Solution:** Clone the kernel source first:
+
+```shell
+./dev.sh prepare kernel 6.1
+```
 
 ### Build failures
 
@@ -236,7 +265,12 @@ Check [tmp/kernel-$$](../tmp/) for build logs. The build directory persists on e
 
 ### QEMU doesn't boot
 
-Ensure you're using the `open` or `open-devel` profile (requires virtio drivers).
+Ensure you're using the `open-devel` profile (requires VirtIO drivers and has Rockchip DRM/security disabled):
+
+```shell
+./dev.sh make kernel PROFILE=open-devel KVER=6.1
+./dev.sh launch output/kernel-open-devel-6.1-*-vmlinuz
+```
 
 ## References
 
