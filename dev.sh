@@ -1,13 +1,25 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-# Handle prepare command (runs outside container)
-if [[ "$1" == "prepare" ]]; then
-    shift
-    case "$1" in
-        help|--help|-h|"")
-            cat <<EOF
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+is_help_requested() {
+    [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" || -z "${1:-}" ]]
+}
+
+setup_ccache_mount() {
+    if [[ -n "${CI:-}" ]]; then
+        mkdir -p "$PWD/tmp/ccache"
+        echo "-v $PWD/tmp/ccache:/tmp/ccache"
+    else
+        echo "-v snapmaker-kernel-ccache:/tmp/ccache"
+    fi
+}
+
+show_prepare_help() {
+    cat <<'EOF'
 Prepare build dependencies (runs outside container)
 
 Usage:
@@ -17,19 +29,109 @@ Commands:
   tools         Build firmware extraction tools
   proprietary   Download stock firmware and extract proprietary files
   kernel        Clone Rockchip kernel source [version]
-  rootfs        Download and prepare Debian rootfs for QEMU [version]
-  help          Show this help
+  rootfs        Manage Debian rootfs for QEMU testing
+    download [version]  Download rootfs tarball (default: latest)
+    image               Create disk image from downloaded tarball
+    modules             Update kernel modules in existing rootfs image
+    [version]           Download version and create image (default: latest and create)
 
 Examples:
   ./dev.sh prepare tools
   ./dev.sh prepare proprietary
-  ./dev.sh prepare kernel 6.1      # Clone kernel version 6.1
-  ./dev.sh prepare rootfs          # Download latest release
-  ./dev.sh prepare rootfs v1.0.0   # Download specific release
+  ./dev.sh prepare kernel 6.1         # Clone kernel version 6.1
+  ./dev.sh prepare rootfs download        # Download latest release tarball
+  ./dev.sh prepare rootfs download v1.0.0 # Download specific version
+  ./dev.sh prepare rootfs image           # Create disk image from tarball
+  ./dev.sh prepare rootfs modules         # Update modules in rootfs
+  ./dev.sh prepare rootfs                 # Download latest and create image
+  ./dev.sh prepare rootfs v1.0.0          # Download v1.0.0 and create image
 
 EOF
-            exit 0
-            ;;
+}
+
+show_main_help() {
+    cat <<'EOF'
+Snapmaker U1 Custom Kernel Builder - Development Environment
+
+Usage:
+  ./dev.sh prepare <command> [args]           Prepare build dependencies
+  ./dev.sh make <target> [PROFILE=<profile>] [KVER=<version>]
+  ./dev.sh run <kernel-image> [args]          Run kernel in virt/container
+
+Commands:
+  prepare       Prepare dependencies (tools, proprietary, kernel, rootfs)
+  make          Build kernel using Makefile inside Docker container
+  run           Run kernel in virtualization/container environment
+  help          Show this help message
+
+Examples:
+  ./dev.sh prepare proprietary
+  ./dev.sh prepare kernel 6.1
+  ./dev.sh prepare rootfs
+
+  ./dev.sh make kernel PROFILE=open KVER=6.1
+  ./dev.sh make kernel PROFILE=open-devel KVER=6.1
+  ./dev.sh make help
+
+  # Run in virtualization (use -devel profile for compatibility)
+  ./dev.sh run
+  ./dev.sh run output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
+  ./dev.sh run qemu-console output/kernel-open-devel-*-vmlinuz
+  ./dev.sh run qemu-gui output/kernel-open-devel-*-vmlinuz
+
+For detailed options:
+  ./dev.sh prepare help
+  ./dev.sh make help
+  ./dev.sh run help
+
+EOF
+}
+
+show_run_help() {
+    cat <<'EOF'
+Run kernel in various virtualization and containerization environments with optional rootfs
+
+Usage:
+  ./dev.sh run [profile] [vmlinuz] [args...]
+
+Available Profiles:
+  qemu-console         - Modern profile (virtio-net, virtio-blk)
+  qemu-gui             - GUI profile (virtio-net, virtio-blk, virtio-gpu)
+
+Arguments:
+  profile       Virtualization profile to use, defaults to qemu-console
+  vmlinuz       Path to kernel image, defaults to newest *-devel-*-vmlinuz
+  args          Optional additional arguments passed to the virtualization method
+
+Examples:
+  # Auto-detect newest -devel kernel with default profile
+  ./dev.sh run
+
+  # Auto-detect newest kernel with specific profile
+  ./dev.sh run qemu-gui
+
+  # Explicit kernel path with default profile
+  ./dev.sh run output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
+
+  # Explicit profile and kernel
+  ./dev.sh run qemu-gui output/kernel-open-devel-*-vmlinuz
+
+Note: Always use '-devel' profile for QEMU compatibility
+Hint: Ctrl-A X to exit QEMU, Ctrl-A C to switch to qemu console, Ctrl-Alt-G to release GUI grab
+
+EOF
+}
+
+handle_prepare() {
+    shift  # Remove 'prepare' from args
+    local command="${1:-}"
+    
+    if is_help_requested "$command"; then
+        show_prepare_help
+        exit 0
+    fi
+    
+    case "$command" in
         tools)
             exec ./scripts/prepare-tools.sh
             ;;
@@ -44,112 +146,96 @@ EOF
             shift
             exec ./scripts/prepare-rootfs.sh "$@"
             ;;
+        "")
+            echo "Error: No prepare command specified" >&2
+            echo "Run './dev.sh prepare help' for usage." >&2
+            exit 1
+            ;;
         *)
-            echo "Unknown prepare command: $1"
-            echo "Run './dev.sh prepare help' for usage."
+            echo "Error: Unknown prepare command: $command" >&2
+            echo "Run './dev.sh prepare help' for usage." >&2
             exit 1
             ;;
     esac
-fi
+}
 
-# Show top-level help if requested
-if [[ "$1" == "help" || "$1" == "--help" || "$1" == "-h" || -z "$1" ]]; then
-    cat <<EOF
-Snapmaker U1 Custom Kernel Builder - Development Environment
-
-Usage:
-  ./dev.sh prepare <command> [args]           Prepare build dependencies
-  ./dev.sh make <target> [PROFILE=<profile>] [KVER=<version>]
-  ./dev.sh launch <kernel-image> [qemu-args]  Launch QEMU
-
-Commands:
-  prepare       Prepare dependencies (tools, proprietary, kernel, rootfs)
-  make          Run Makefile targets (kernel, qemu, clean)
-  launch        Launch QEMU with built kernel
-  help          Show this help message
-
-Examples:
-  # Prepare dependencies
-  ./dev.sh prepare proprietary
-  ./dev.sh prepare kernel 6.1
-  ./dev.sh prepare rootfs
-
-  # Build kernel
-  ./dev.sh make kernel PROFILE=open-devel KVER=6.1
-  ./dev.sh make kernel PROFILE=open KVER=6.1
-  ./dev.sh make help
-
-  # Test in QEMU (use -devel profile for QEMU compatibility)
-  ./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
-
-For detailed options:
-  ./dev.sh prepare help
-  ./dev.sh make help
-  ./dev.sh launch help
-
-EOF
-    exit 0
-fi
-
-# Handle launch command locally (not in container)
-if [[ "$1" == "launch" ]]; then
-    shift
-    # Show help if requested
-    if [[ "$1" == "help" || "$1" == "--help" || "$1" == "-h" || -z "$1" ]]; then
-        cat <<EOF
-Launch QEMU with built kernel
-
-Usage:
-  ./dev.sh launch <vmlinuz> [qemu-args...]
-
-Arguments:
-  vmlinuz       Path to kernel image (use *-vmlinuz, not *-u1-boot.img)
-  qemu-args     Additional QEMU arguments (optional)
-
-Examples:
-  ./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
-  ./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz -nographic
-
-The launcher configures QEMU with:
-  - ARM64 virt machine with Cortex-A72
-  - 2GB RAM
-  - Serial console on ttyAMA0
-  - Verbose kernel boot output
-
-Note: Use the 'open-devel' profile for QEMU compatibility (includes VirtIO
-      drivers and disables Rockchip DRM/security features requiring TrustZone)
-
-Press Ctrl-A X to exit QEMU
-
-EOF
+handle_run() {
+    shift  # Remove 'run' from args
+    
+    # Show help only if explicitly requested (not on empty args)
+    if [[ "${1:-}" == "help" || "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        show_run_help
         exit 0
     fi
-    exec ./scripts/launch-qemu.sh "$@"
-fi
+    
+    # Check if first arg is a profile name, actual profile validation is in run-virt.sh
+    if [[ -n "${1:-}" && "$1" =~ ^qemu- ]]; then
+        export QEMU_PROFILE="$1"
+        shift
+    fi
+    
+    exec ./scripts/run-virt.sh "$@"
+}
 
-IMAGE_NAME="snapmaker-kernel-dev"
-BUILD_CONTEXT=".github/dev"
+handle_make() {
+    local image_name="snapmaker-kernel-dev"
+    local build_context=".github/dev"
+    
+    # Validate build context exists
+    if [[ ! -d "$build_context" ]]; then
+        echo "Error: Build context directory not found: $build_context" >&2
+        exit 1
+    fi
+    
+    # Build Docker image
+    if ! docker build -t "$image_name" "$build_context"; then
+        echo "Error: Docker build failed" >&2
+        exit 1
+    fi
+    
+    # Set TTY flag if running interactively
+    local tty_flag=""
+    [[ -t 0 ]] && tty_flag="-it"
+    
+    # Avoid passing PROFILE and VERSION which conflict with kernel build
+    local -a env_flags=()
+    [[ -n "${GIT_VERSION:-}" ]] && env_flags+=("-e" "GIT_VERSION")
+    [[ -n "${OUTPUT_DIR:-}" ]] && env_flags+=("-e" "OUTPUT_DIR")
+    
+    # Setup ccache mount
+    local ccache_mount
+    ccache_mount="$(setup_ccache_mount)"
+    
+    # shellcheck disable=SC2086
+    exec docker run --rm ${tty_flag} "${env_flags[@]}" --privileged \
+        -w "$PWD" -v "$PWD:$PWD" \
+        ${ccache_mount} \
+        "$image_name" "$@"
+}
 
-if ! docker build -t "$IMAGE_NAME" "$BUILD_CONTEXT"; then
-    echo "[!] Docker build failed."
-    exit 1
-fi
+main() {
+    local command="${1:-}"
+    
+    if is_help_requested "$command"; then
+        show_main_help
+        exit 0
+    fi
+    
+    case "$command" in
+        prepare)
+            handle_prepare "$@"
+            ;;
+        run)
+            handle_run "$@"
+            ;;
+        make)
+            handle_make "$@"
+            ;;
+        *)
+            handle_make "$@"
+            ;;
+    esac
+}
 
-TTY_FLAG=""
-[[ -t 0 ]] && TTY_FLAG="-it"
+main "$@"
 
-# Pass through environment variables (avoid PROFILE and VERSION which conflict with kernel build)
-ENV_FLAGS="-e GIT_VERSION -e OUTPUT_DIR"
-
-# Use tmp/ccache in CI, named volume locally
-if [[ -n "$CI" ]]; then
-  mkdir -p "$PWD/tmp/ccache"
-  CCACHE_MOUNT="-v $PWD/tmp/ccache:/tmp/ccache"
-else
-  CCACHE_MOUNT="-v snapmaker-kernel-ccache:/tmp/ccache"
-fi
-
-exec docker run --rm $TTY_FLAG $ENV_FLAGS --privileged \
-  -w "$PWD" -v "$PWD:$PWD" \
-  $CCACHE_MOUNT \
-  "$IMAGE_NAME" "$@"

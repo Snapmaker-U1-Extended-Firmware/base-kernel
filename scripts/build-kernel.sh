@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 if [[ $# -ne 3 ]]; then
   echo "Usage: $0 <kernel-version> <build-profile> <output.img>"
@@ -66,8 +66,7 @@ trap cleanup EXIT INT TERM
 
 # Validate kernel source exists
 if [[ ! -d "$KERNEL_DIR/.git" ]]; then
-  echo "Error: Kernel source not found at $KERNEL_DIR"
-  echo "Run: ./dev.sh ./scripts/clone-rockchip-kernel.sh $KERNEL_VERSION"
+  echo "Error: Kernel source not found at $KERNEL_DIR" >&2
   exit 1
 fi
 
@@ -142,13 +141,21 @@ make -C "$KERNEL_DIR" O="$BUILD_DIR" \
   INSTALL_MOD_STRIP=1 \
   modules_install
 
-# Patch proprietary modules
-echo ">> Running depmod..."
+# Calculate kernel version
 VERSION=$(grep '^VERSION = ' "$KERNEL_DIR/Makefile" | head -1 | awk '{print $3}')
 PATCHLEVEL=$(grep '^PATCHLEVEL = ' "$KERNEL_DIR/Makefile" | head -1 | awk '{print $3}')
 SUBLEVEL=$(grep '^SUBLEVEL = ' "$KERNEL_DIR/Makefile" | head -1 | awk '{print $3}')
 KVER="$VERSION.$PATCHLEVEL.$SUBLEVEL"
 
+# Remove build and source symlinks (following Ubuntu kernel packaging approach)
+# These symlinks point to absolute paths on the build host and are not useful
+# in the distributed modules package. They would be recreated by a headers package.
+echo ">> Removing build/source symlinks..."
+rm -f "$MODULES_STAGING/lib/modules/$KVER/build"
+rm -f "$MODULES_STAGING/lib/modules/$KVER/source"
+
+# Run depmod
+echo ">> Running depmod..."
 depmod -b "$MODULES_STAGING" "$KVER"
 
 echo ">> Modules installed to $MODULES_STAGING/lib/modules/$KVER/"

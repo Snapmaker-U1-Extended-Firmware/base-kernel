@@ -1,94 +1,73 @@
 # Snapmaker U1 Custom Kernel Builder
 
-Custom kernel builds for Snapmaker U1 3D Printer with support for containers, virtualization, and debugging.
+Custom kernel builds for Snapmaker U1 3D Printer
 
 ## Overview
 
-This project builds custom Linux kernels compatible with the Snapmaker U1 3D printer. The kernel is built from Rockchip's official sources with Snapmaker-specific device tree and configurations.
+This project builds custom Linux kernels compatible with the Snapmaker U1 3D printer. 
+Kernel is built from Rockchip's official sources with Snapmaker-specific device tree and configurations. 
 
-**Features:**
-
-- Multiple build profiles (open, open-devel)
-- Docker/container support (cgroups, namespaces, overlay fs)
-- QEMU/KVM virtualization support
-- Automated FIT image creation for U-Boot
-- Stock firmware compatibility
+All actions are performed through the `dev.sh` script. 
+Try not to run any other scripts or commands directly because it shouldn't be necessary for normal workflows.
 
 ## Prerequisites
 
-**Required:**
-
 - Docker or Podman
-- ~3GiB free disk space
-- Linux host (it's containerized, but I haven't tested Windows/Mac)
+- ~5GiB free disk space
+- Linux host (it's containerized, but we haven't tested macOS or WSL)
+- (Optional) QEMU with KVM support for testing kernels in virtual machines
 
-**First time setup:**
+## First time setup
+
+Also use these commands with more arguments to update tools or kernel source later. 
+Use `./dev.sh help` and `./dev.sh <command> help` for more information. 
 
 ```shell
+./dev.sh prepare tools
+./dev.sh prepare kernel
 ./dev.sh prepare proprietary
-./dev.sh prepare kernel 6.1
-./dev.sh prepare rootfs       # Optional: for QEMU testing
+./dev.sh prepare rootfs       # Optional, only needed for running the kernel in virutal machines
 ```
 
-This downloads the stock U1 firmware (~200MB) and extracts:
-
-- `tmp/proprietary/resource.img` - Boot resources (logo, etc.)
-
-And clones the Rockchip kernel source to `rockchip-kernel/`.
-
-## Quick Start
-
-### Build Kernel
+## Build The Kernel
 
 ```shell
 # Build production kernel
-./dev.sh make kernel PROFILE=open KVER=6.1
+./dev.sh make kernel
+# OR:
+./dev.sh make kernel PROFILE=open
 
-# Build development kernel (for QEMU testing)
+# Build a specific version of development kernel (for virtualization testing)
 ./dev.sh make kernel PROFILE=open-devel KVER=6.1
 ```
 
-### Test in QEMU
-
-```shell
-# Note: Use -devel profile for QEMU compatibility
-./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
-```
-
-Press `Ctrl-A X` to exit QEMU.
-
-## Build Profiles
-
-Two profiles are available:
+## Existing Build Profiles
 
 ### open
 
-- Stock Snapmaker U1 configuration
-- Docker/Podman support (namespaces, cgroups, veth, bridge, overlay fs)
-- QEMU support (virtio drivers, PL011 serial, PL031 RTC)
-- MACVLAN networking
-- **Best for:** Production deployment on physical hardware
+Intended for production use on Snapmaker U1 printer instead of stock kernel.
+
+- Uses Snapmaker's stock kernel configuration as base
+- Enables Rockchip-specific drivers for display and security features
+- Adds support for being containerization and virtualization host
+- Adds support for running as virtualized guest
+- Adds networking and storage drivers
 
 ### open-devel
 
-- All features from `open` profile
-- **QEMU compatibility:** Disables Rockchip DRM/security features that require TrustZone firmware
-  - `CONFIG_DRM_ROCKCHIP=n` - Rockchip display driver (needs ARM TrustZone)
-  - `CONFIG_MFD_RK628=n` - HDMI/display management (needs TrustZone)
-  - Enables `CONFIG_DRM_VIRTIO_GPU` for QEMU display
-- Debugging and development tools:
-  - `CONFIG_DEBUG_INFO=y` - Debug symbols
-  - `CONFIG_DEBUG_KERNEL=y` - Kernel debugging
-  - `CONFIG_DEBUG_FS=y` - Debug filesystem
-- **Best for:** Development, testing in QEMU, debugging
+Intended for development, debugging, and testing on hardware and in virtual machine.
 
-**Important:** Always use `open-devel` profile when testing with QEMU. The `open` profile's
-Rockchip-specific drivers will fail in QEMU as they require TrustZone secure firmware.
+- All features from `open` profile
+- Adds Kernel Debugging and development tools
+- Disables DRM and security features necessary to run in virtual machine
+
+Don't use `open-devel` profile in production because it disables important drivers. 
+Always use `open-devel` profile when testing in virtualization environments. 
 
 ## Kernel Versions
 
-- **6.1** (default) - rockchip-linux/kernel.git branch `develop-6.1`
-
+Currently only 6.1. series works. 
+In the future we'll be trying to go for 6.6 and possibly mainline but that's a long shot because of missing Rockchip drivers.
 
 ## Build System
 
@@ -98,17 +77,46 @@ Rockchip-specific drivers will fail in QEMU as they require TrustZone secure fir
 ./dev.sh make help                              # Show all targets
 ./dev.sh make kernel PROFILE=open KVER=6.1      # Production build
 ./dev.sh make kernel PROFILE=open-devel KVER=6.1 # Development build
-./dev.sh make qemu PROFILE=open-devel KVER=6.1   # Build and launch QEMU
 ./dev.sh make clean                             # Remove build artifacts
 ```
 
+### Testing In Virtualization
+
+Currently only supports QEMU and requires Linux host with KVM and virtio support. 
+Instructions for testing on Mac or Windows are very much welcome; please contribute! 
+
+```shell
+./dev.sh prepare rootfs download    # Download latest rootfs tarball
+./dev.sh prepare rootfs image       # Create disk image from downloaded tarball
+./dev.sh prepare rootfs modules     # Update kernel modules in existing rootfs
+./dev.sh prepare rootfs v1.0.0      # Download specific version and create image
+```
+
+```shell
+# Note: Use -devel profile for virtualization compatibility
+
+# Auto-detect newest -devel kernel with default profile
+./dev.sh run
+
+# Auto-detect with specific profile
+./dev.sh run qemu-gui
+
+# Explicit kernel with default profile
+./dev.sh run output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
+
+# GUI profile (with virtio-gpu graphics)
+./dev.sh run qemu-gui output/kernel-open-devel-*-vmlinuz
+```
+
+Press `Ctrl-A X` to exit QEMU (console profile) or `Ctrl-Alt-G` to release mouse grab (GUI profile).
+
 ## Build Scripts
+
+These scripts are not intended to be run directly. Use `./dev.sh` as the main entry point.
 
 ### scripts/clone-rockchip-kernel.sh
 
-Clones the Rockchip kernel source. Run this once before building.
-
-**Usage:**
+Clones the Rockchip kernel source. Run this once before building and whenever you want to update the source.
 
 ```shell
 ./dev.sh prepare kernel 6.1
@@ -116,12 +124,10 @@ Clones the Rockchip kernel source. Run this once before building.
 
 ### scripts/build-kernel.sh
 
-Main kernel build orchestrator.
-
-**Usage:**
+Main kernel build. Build and starts container to ensure consistent build environment.
 
 ```shell
-./dev.sh ./scripts/build-kernel.sh <kernel-version> <build-profile> <output.img>
+./dev.sh make kernel PROFILE=open KVER=6.1
 ```
 
 **Process:**
@@ -134,66 +140,6 @@ Main kernel build orchestrator.
 6. Patches proprietary modules
 7. Creates FIT boot image
 
-### scripts/launch-qemu.sh
-
-**EXPERIMENTAL:** Launches QEMU for kernel testing with the `open-devel` profile.
-
-**Profile Requirements:**
-
-- **MUST use `open-devel` profile** - The standard `open` profile includes Rockchip-specific drivers (DRM, MFD_RK628) that require ARM TrustZone secure firmware not available in QEMU
-- The `open-devel` profile disables these hardware-specific drivers and enables VirtIO alternatives
-
-**Known Limitations:**
-
-- The kernel is built specifically for Rockchip RK3562 hardware with Cortex-A53 CPUs
-- Userspace binaries may crash due to CPU feature mismatches between real hardware and QEMU emulation
-- QEMU testing is primarily useful for validating kernel boot and driver loading
-- Full system testing requires actual Snapmaker U1 hardware
-
-**Usage:**
-
-```shell
-# Build with open-devel profile first
-./dev.sh make kernel PROFILE=open-devel KVER=6.1
-
-# Launch QEMU with the vmlinuz image
-./dev.sh launch output/kernel-open-devel-6.1-20260111-abc1234-vmlinuz
-
-# Or use wildcard for convenience
-./dev.sh launch output/kernel-open-devel-*-vmlinuz
-```
-
-**Features:**
-
-- ARM64 Cortex-A53 emulation (4 cores, matching RK3562)
-- QEMU virt machine
-- 2GB RAM
-- PL011 UART console on ttyAMA0
-- Automatic rootfs detection (if prepared with `./dev.sh prepare rootfs`)
-- VirtIO block device for rootfs (/dev/vda)
-
-**Interactive Console Controls:**
-
-- **Ctrl-A X** - Exit QEMU
-- **Ctrl-A C** - Switch between serial console and QEMU monitor
-- **Ctrl-A H** - Help for QEMU monitor commands
-
-**Important:** This script must be run directly in your terminal for interactive console access.
-The serial console will not work if launched through background processes or automation tools.
-
-**Non-Interactive Mode:**
-
-For automated testing or CI/CD, you can redirect serial output to a pty:
-
-```shell
-./dev.sh launch output/kernel-*-vmlinuz -serial pty -nographic
-# QEMU will print: "char device redirected to /dev/pts/N (label serial0)"
-# Connect with: tio /dev/pts/N
-```
-
-**Note:** The FIT image (`*-u1-boot.img`) is designed for U-Boot bootloader on the actual
-hardware. For QEMU testing, always use the raw kernel image (`*-vmlinuz`).
-
 ### scripts/kernel-config.sh
 
 Centralized configuration (sourced by other scripts).
@@ -204,20 +150,66 @@ Centralized configuration (sourced by other scripts).
 - `get_kernel_branch()` - Maps version to git branch
 - `validate_profile()` - Validates profile names
 
-## Development
+### scripts/run-virt.sh
 
-### Adding Config Options
+Runs built kernels in virtual machines for testing.
+Optionally uses rootfs image to also test from userspace.
 
-Create or edit profile files in `config/profile-*.config`:
+MUST use `-devel` kernel profile because standard profiles include Rockchip-specific features which can't be virtualized.
+
+#### Virtualization Profiles
+
+Two QEMU on Linux profiles are available (selected via profile argument to run command):
+
+##### qemu-console (default)
+
+No graphics, serial console only. 
+Use when quickly testing if the new kernel boots. 
+
+##### qemu-gui
+
+GUI profile with graphics
+
+##### Usage
 
 ```shell
-# config/profile-my-custom.config
-# Additions to snapmaker-u1-stock.config
+# First build -devel kernel
+./dev.sh make kernel PROFILE=open-devel
 
-CONFIG_MY_OPTION=y
-CONFIG_ANOTHER=m
+# Get and prepare rootfs for VM testing
+./dev.sh prepare rootfs download
+./dev.sh prepare rootfs image
+./dev.sh prepare rootfs modules
 ```
 
+At this point rootfs has been downloaded, converted to disk image, init patched to preload kernel modules from modules.img disk.
+
+```shell
+# Run qemu virtual machine with newest *-devel kernel from output/ directory
+./dev.sh run
+
+# Run with graphics enabled
+./dev.sh run qemu-gui
+
+# Run an alternative kernel
+./dev.sh run output/kernel-open-devel-*-vmlinuz
+```
+
+###### Interactive Console Controls for QEMU
+
+- **Console-only profile**
+  - **Ctrl-A X** - Exit QEMU
+  - **Ctrl-A C** - Switch to QEMU monitor console
+- **GUI profile**
+  - **Ctrl-Alt-G** - Release mouse/keyboard grab
+  - **Ctrl-Alt-1** - Switch to virtual console
+  - **Ctrl-Alt-2** - Switch to QEMU monitor
+
+## Development
+
+### Modifying Kernel Configurations
+
+Create or edit profiles in `config/profile-*.config`:
 Then add the profile to `scripts/kernel-config.sh`:
 
 ```shell
@@ -230,7 +222,7 @@ Edit [config/snapmaker-u1-stock.dts](config/snapmaker-u1-stock.dts). Changes wil
 
 ### Debugging Builds
 
-Use the `open-devel` profile for debug symbols, additional diagnostics, and QEMU compatibility:
+Use the `open-devel` profile for debug symbols, additional diagnostics, and virtualization compatibility:
 
 ```shell
 ./dev.sh make kernel PROFILE=open-devel KVER=6.1
@@ -238,42 +230,29 @@ Use the `open-devel` profile for debug symbols, additional diagnostics, and QEMU
 
 Build artifacts remain in `tmp/kernel-*` on failure for inspection.
 
-## CI/CD
+### Troubleshooting
 
-GitHub Actions builds all profiles on push to `main` and publishes kernel artifacts as releases with version tag `YYYYMMDD-{git-sha}`.
-
-See [.github/workflows/build.yaml](.github/workflows/build.yaml) for the full workflow.
-
-## Troubleshooting
-
-### Kernel source not found
+#### Kernel source not found
 
 ```text
 Error: Kernel source not found at rockchip-kernel
-Run: ./dev.sh prepare kernel 6.1
 ```
 
-**Solution:** Clone the kernel source first:
+Solution: Clone the kernel source first
 
 ```shell
 ./dev.sh prepare kernel 6.1
 ```
 
-### Build failures
+#### Build failures
 
 Check [tmp/kernel-$$](../tmp/) for build logs. The build directory persists on error.
 
-### QEMU doesn't boot
+#### Kernel doesn't boot in virtualization
 
 Ensure you're using the `open-devel` profile (requires VirtIO drivers and has Rockchip DRM/security disabled):
 
 ```shell
 ./dev.sh make kernel PROFILE=open-devel KVER=6.1
-./dev.sh launch output/kernel-open-devel-6.1-*-vmlinuz
+./dev.sh run output/kernel-open-devel-6.1-*-vmlinuz
 ```
-
-## References
-
-- [Rockchip Kernel Source](https://github.com/rockchip-linux/kernel)
-- [Snapmaker U1 Documentation](https://wiki.snapmaker.com/en/snapmaker_u1)
-- [U-Boot FIT Image Format](https://github.com/u-boot/u-boot/blob/master/doc/uImage.FIT/howto.txt)

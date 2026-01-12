@@ -34,7 +34,7 @@ help:
 	@echo ""
 	@echo "Kernel Profiles:"
 	@echo "  open       - Docker/Container + QEMU/KVM support"
-	@echo "  open-devel - Open + debugging and development tools"
+	@echo "  open-devel - Open + disabled Rockchip DRM and security for virtualization compatibility"
 	@echo ""
 	@echo "Variables:"
 	@echo "  PROFILE        - Build profile (default: $(BUILD_PROFILE))"
@@ -42,11 +42,9 @@ help:
 	@echo "  OUTPUT_DIR     - Output directory (default: $(OUTPUT_DIR))"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make kernel PROFILE=open-devel"
-	@echo "  make kernel PROFILE=open KVER=6.1"
-	@echo ""
-	@echo "Launch QEMU:"
-	@echo "  make qemu PROFILE=open-devel [KVER=6.1]"
+	@echo "  make kernel PROFILE=open"
+	@echo "  make kernel PROFILE=open-devel KVER=6.1"
+
 
 # ================= Kernel Build =================
 
@@ -67,11 +65,6 @@ endif
 	@mkdir -p $(OUTPUT_DIR)
 	@./scripts/build-kernel.sh $(KERNEL_VERSION) $(BUILD_PROFILE) $(KERNEL_IMG)
 
-# ================= QEMU Launch =================
-
-.PHONY: qemu
-qemu: kernel
-	@./scripts/launch-qemu.sh $(KERNEL_VMLINUZ)
 
 # ================= Clean =================
 
